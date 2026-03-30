@@ -2,10 +2,10 @@
   "name": "e2ee-chat-app",
   "version": "1.0.0",
   "description": "End-to-End Encrypted Chat Application using Diffie-Hellman and AES",
-  "main": "server.js",
+  "main": "src/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
   },
   "keywords": ["e2ee", "encryption", "diffie-hellman", "aes", "chat"],
   "author": "",

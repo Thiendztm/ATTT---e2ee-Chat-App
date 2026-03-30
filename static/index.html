@@ -4,48 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>E2EE Chat - Mã hóa đầu cuối</title>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <!-- AUTH SCREEN -->
-    <div id="authScreen">
-        <div class="auth-container">
-            <h1>🔐 E2EE Chat</h1>
-            <div class="error-message" id="authError"></div>
-            
-            <div class="form-group">
-                <label>Tên đăng nhập:</label>
-                <input type="text" id="usernameInput" placeholder="Nhập tên đăng nhập">
-            </div>
-            
-            <div class="form-group">
-                <label>Mật khẩu:</label>
-                <input type="password" id="passwordInput" placeholder="Nhập mật khẩu">
-            </div>
-            
-            <div class="button-group">
-                <button class="btn-primary" onclick="handleRegister()">Đăng ký</button>
-                <button class="btn-secondary" onclick="handleLogin()">Đăng nhập</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- CHAT SCREEN -->
+    <!-- CHAT SCREEN (chỉ có chat, không có auth) -->
     <div id="chatScreen">
         <!-- SIDEBAR -->
         <div class="sidebar">
-            <div class="sidebar-header">💬 Người dùng</div>
+            <div class="sidebar-header">Người dùng</div>
             <div class="user-info" id="userInfo"></div>
             <div class="user-list" id="userList">
                 <div class="placeholder">Đang tải...</div>
             </div>
-            <button class="logout-btn" onclick="handleLogout()">🚪 Đăng xuất</button>
+            <button class="logout-btn" onclick="handleLogout()">Logout</button>
         </div>
 
         <!-- MAIN CHAT AREA -->
         <div class="main-content">
             <div class="chat-header">
-                <h2 id="chatTitle">Chọn người để chat</h2>
+                <h2 id="chatTitle">Bắt đầu cuộc trò chuyện mã hóa</h2>
                 <div class="key-status unsecured" id="keyStatus">
                     <span class="status-dot red"></span>
                     <span>Chưa bảo mật</span>

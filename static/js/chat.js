@@ -1,6 +1,7 @@
 /**
  * E2EE Chat Client Logic
- * Xử lý: auth, key exchange (DH), encryption/decryption
+ * Xử lý: key exchange (DH), encryption/decryption, messaging
+ * (Auth logic đã chuyển sang auth.js / login.html)
  */
 
 const socket = io();
@@ -12,72 +13,67 @@ let clientState = {
   privateKey: null,
   publicKey: null,
   selectedUser: null,
+  pendingKeyExchanges: {}, // userId -> {privateKey, publicKey}
   sessions: {}, // sessionId -> {publicKeyA, publicKeyB, encKey, decKey, counter}
   messages: [] // Lưu tin nhắn hiển thị
 };
 
-// ========== AUTH ==========
-function handleRegister() {
-  const username = document.getElementById('usernameInput').value.trim();
-  const password = document.getElementById('passwordInput').value.trim();
+// ========== INIT ON PAGE LOAD ==========
+document.addEventListener('DOMContentLoaded', async () => {
   
-  if (!username || !password) {
-    showAuthError('Vui lòng nhập username và password');
+  // Lấy info từ sessionStorage (per tab)
+  const userId = sessionStorage.getItem('userId');
+  const username = sessionStorage.getItem('username');
+  
+  if (!userId || !username) {
+    window.location.href = '/login';
     return;
   }
-
-  socket.emit('register', { username, password });
-}
-
-function handleLogin() {
-  const username = document.getElementById('usernameInput').value.trim();
-  const password = document.getElementById('passwordInput').value.trim();
   
-  if (!username || !password) {
-    showAuthError('Vui lòng nhập username và password');
-    return;
+  clientState.userId = userId;
+  clientState.username = username;
+  
+  // Authenticate socket với server
+  socket.emit('authenticate', { userId, username });
+  
+  // Khởi tạo crypto
+  try {
+    await initializeCrypto();
+    initializeChatUI();
+  } catch (e) {
+    alert('Lỗi khởi tạo: ' + e.message);
+    window.location.href = '/login';
   }
+});
 
-  socket.emit('login', { username, password });
+// ========== UI INIT ==========
+
+function initializeChatUI() {
+  // Hiển thị thông tin user
+  document.getElementById('userInfo').textContent = `👤 ${clientState.username}`;
+  
+  // Yêu cầu danh sách user
+  socket.emit('requestUserList');
+  
+  // Attach event listener cho message input
+  const messageInput = document.getElementById('messageInput');
+  if (messageInput) {
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSendMessage();
+      }
+    });
+  }
 }
 
 function handleLogout() {
   if (confirm('Bạn chắc chứ?')) {
-    location.reload();
+    sessionStorage.removeItem('userId');
+    sessionStorage.removeItem('username');
+    window.location.href = '/login';
   }
 }
-
-function showAuthError(message) {
-  const errorDiv = document.getElementById('authError');
-  errorDiv.textContent = message;
-  errorDiv.style.display = 'block';
-  setTimeout(() => {
-    errorDiv.style.display = 'none';
-  }, 3000);
-}
-
-// ========== SOCKET EVENTS ==========
-
-socket.on('registerSuccess', (data) => {
-  console.log('✅ Register successful:', data);
-  clientState.userId = data.userId;
-  clientState.username = data.username;
-  initializeCrypto();
-  switchToChatScreen();
-});
-
-socket.on('loginSuccess', (data) => {
-  console.log('✅ Login successful:', data);
-  clientState.userId = data.userId;
-  clientState.username = data.username;
-  initializeCrypto();
-  switchToChatScreen();
-});
-
-socket.on('error', (message) => {
-  console.error('❌ Server error:', message);
-  showAuthError(message);
-});
 
 // Danh sách user cập nhật
 socket.on('userList', (userList) => {
@@ -88,56 +84,118 @@ socket.on('userListUpdate', (userList) => {
   updateUserList(userList);
 });
 
+// Xác thực socket (khi refresh page)
+socket.on('authenticateSuccess', (data) => {
+});
+
 // Nhận yêu cầu key exchange từ đối phương
 socket.on('keyExchangeRequest', async (data) => {
-  console.log('🔐 Key exchange request từ:', data.fromUsername);
   
   const { fromUserId, fromUsername, publicKey, sessionId } = data;
   
   // Tự động chấp nhận (trong thực tế có thể hỏi user)
   const keyPair = await generateECDH();
+  
+  // Lưu key pair cho key exchange này
+  clientState.pendingKeyExchanges[fromUserId] = {
+    privateKey: keyPair.privateKey,
+    publicKey: keyPair.publicKey
+  };
+  
   socket.emit('acceptKeyExchange', {
     sessionId,
     publicKey: keyPair.publicKey
   });
   
-  // Lưu session đã trao đổi khóa
-  await setupSession(sessionId, fromUserId, publicKey, keyPair.privateKey);
+  // Setup session tạm thời (fingerprint sẽ được update khi nhận sessionEstablished)
+  await setupSession(sessionId, fromUserId, publicKey, keyPair.privateKey, null);
+  
+  // 🆕 Auto-select user để B có thể gửi tin nhắn
+  clientState.selectedUser = fromUserId;
+  document.getElementById('chatTitle').textContent = `💬 Chat với ${fromUsername}`;
+  document.getElementById('messages').innerHTML = '';
+  clientState.messages = [];
+  document.getElementById('inputArea').style.display = 'flex';
+  document.getElementById('messageInput').focus();
+  
+  updateUserListUI();
+  
+  // Xóa pending key sau khi dùng
+  delete clientState.pendingKeyExchanges[fromUserId];
 });
+
+// Helper: update user list UI to show active selection
+function updateUserListUI() {
+  // Fetch current user list and re-render with updated selection
+  const userListDiv = document.getElementById('userList');
+  
+  // Get all users from DOM
+  const userItems = document.querySelectorAll('.user-item');
+  userItems.forEach(item => {
+    const userId = item.getAttribute('data-userid');
+    if (userId === clientState.selectedUser) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+}
 
 // Nhận phản hồi key exchange từ đối phương
 socket.on('keyExchangeAccepted', async (data) => {
-  console.log('✅ Key exchange accepted từ:', data.fromUserId);
   
-  const { sessionId, publicKey } = data;
+  const { sessionId, publicKey, fingerprint } = data;
   
-  // Tính toán shared secret và setup session
-  // Lấy private key của A (người initiate)
-  await setupSession(sessionId, data.fromUserId, publicKey, clientState.privateKey);
+  // Lấy private key từ pending (người initiate)
+  const pendingKey = clientState.pendingKeyExchanges[data.fromUserId];
+  if (!pendingKey) {
+    return;
+  }
+  
+  // Tính toán shared secret và setup session (dùng fingerprint từ server)
+  await setupSession(sessionId, data.fromUserId, publicKey, pendingKey.privateKey, fingerprint);
+  
+  // Xóa pending key sau khi dùng
+  delete clientState.pendingKeyExchanges[data.fromUserId];
+});
+
+// Nhận confirmation từ server sau khi establish session (responder side)
+socket.on('sessionEstablished', (data) => {
+  const { sessionId, fingerprint } = data;
+  
+  // Update fingerprint trong session
+  if (clientState.sessions[sessionId]) {
+    clientState.sessions[sessionId].peerFingerprint = fingerprint;
+    updateKeyStatus(true, fingerprint);
+    
+    // Hiển thị thông báo verify
+    addMessageToUI({
+      text: `Bảo mật thành công\n Fingerprint: ${fingerprint}\n\n Hãy xác nhận fingerprint này với đối phương qua ngoài app để bảo mật cuộc trò chuyện!`,
+      sender: 'system',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Nhận tin nhắn được mã hóa
 socket.on('receiveMessage', async (data) => {
-  console.log('💬 Nhận tin nhắn từ:', data.senderId);
   
-  const { sessionId, senderId, ciphertext, nonce, tag, counter, timestamp } = data;
+  const { sessionId, senderId, ciphertext, nonce, counter, timestamp } = data;
   
   try {
     const session = clientState.sessions[sessionId];
     if (!session) {
-      console.error('❌ Session không tồn tại:', sessionId);
       return;
     }
 
     // Kiểm tra counter (chống replay)
     if (counter <= session.lastCounter) {
-      console.warn('⚠️ Tin nhắn cũ hoặc trùng counter');
       return;
     }
 
     // Giải mã
     const aad = JSON.stringify({ sessionId, senderId, counter });
-    const plaintext = decryptMessage(session.decKey, ciphertext, nonce, tag, aad);
+    const plaintext = await decryptMessage(session.decKey, ciphertext, nonce, aad);
     
     session.lastCounter = counter;
 
@@ -145,11 +203,11 @@ socket.on('receiveMessage', async (data) => {
     addMessageToUI({
       text: plaintext,
       sender: 'other',
+      counter,
       timestamp
     });
 
   } catch (e) {
-    console.error('❌ Giải mã thất bại:', e.message);
     addMessageToUI({
       text: '❌ Lỗi: Không thể giải mã tin nhắn (khóa sai hoặc tin bị sửa)',
       sender: 'system',
@@ -160,17 +218,6 @@ socket.on('receiveMessage', async (data) => {
 
 // ========== UI FUNCTIONS ==========
 
-function switchToChatScreen() {
-  document.getElementById('authScreen').style.display = 'none';
-  document.getElementById('chatScreen').style.display = 'flex';
-  
-  // Hiển thị thông tin user
-  document.getElementById('userInfo').textContent = `👤 ${clientState.username}`;
-  
-  // Yêu cầu danh sách user
-  socket.emit('requestUserList');
-}
-
 function updateUserList(userList) {
   const userListDiv = document.getElementById('userList');
   
@@ -179,12 +226,15 @@ function updateUserList(userList) {
     return;
   }
 
-  userListDiv.innerHTML = userList.map(user => `
-    <div class="user-item ${user.online ? 'online' : ''} ${clientState.selectedUser === user.userId ? 'active' : ''}" onclick="selectUser('${user.userId}', '${user.username}')">
+  userListDiv.innerHTML = userList.map(user => {
+    const classes = ['user-item', user.online ? 'online' : '', clientState.selectedUser === user.userId ? 'active' : ''].filter(Boolean).join(' ');
+    return `
+    <div class="${classes}" data-userid="${user.userId}" onclick="selectUser('${user.userId}', '${user.username}')">
       ${user.username}
       <div class="status">${user.online ? '🟢 Online' : '🔴 Offline'}</div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function selectUser(userId, username) {
@@ -196,9 +246,8 @@ function selectUser(userId, username) {
   document.getElementById('messageInput').focus();
   
   // Kiểm tra xem đã setup session chưa
-  const sessionId = `${clientState.userId}-${userId}-*`; // Kiểm tra pattern
   const existingSession = Object.keys(clientState.sessions).find(sid => 
-    sid.includes(clientState.userId) && sid.includes(userId)
+    clientState.sessions[sid].peerId === userId
   );
   
   if (existingSession) {
@@ -216,7 +265,7 @@ function selectUser(userId, username) {
   event.target.closest('.user-item').classList.add('active');
 }
 
-function handleSendMessage() {
+async function handleSendMessage() {
   const messageInput = document.getElementById('messageInput');
   const plaintext = messageInput.value.trim();
   
@@ -226,8 +275,9 @@ function handleSendMessage() {
     return;
   }
 
-  const sessionId = Object.keys(clientState.sessions).find(sid =>
-    sid.includes(clientState.userId) && sid.includes(clientState.selectedUser)
+  // Tìm session theo peerId (selectedUser)
+  const sessionId = Object.keys(clientState.sessions).find(sid => 
+    clientState.sessions[sid].peerId === clientState.selectedUser
   );
 
   if (!sessionId) {
@@ -242,7 +292,7 @@ function handleSendMessage() {
   
   // Mã hóa
   const aad = JSON.stringify({ sessionId, senderId: clientState.userId, counter: session.counter });
-  const encrypted = encryptMessage(session.encKey, plaintext, aad);
+  const encrypted = await encryptMessage(session.encKey, plaintext, aad);
 
   // Gửi qua server
   socket.emit('sendMessage', {
@@ -250,7 +300,6 @@ function handleSendMessage() {
     recipientId: clientState.selectedUser,
     ciphertext: encrypted.ciphertext,
     nonce: encrypted.nonce,
-    tag: encrypted.tag,
     counter: session.counter
   });
 
@@ -258,6 +307,7 @@ function handleSendMessage() {
   addMessageToUI({
     text: plaintext,
     sender: 'own',
+    counter: session.counter,
     timestamp: new Date().toISOString()
   });
 
@@ -275,8 +325,16 @@ function addMessageToUI(message) {
   const time = new Date(message.timestamp).toLocaleTimeString('vi-VN');
   const messageEl = document.createElement('div');
   messageEl.className = `message ${message.sender}`;
+  
+  // Thêm counter para message (chứ không phải system)
+  let counterText = '';
+  if (message.sender !== 'system' && message.counter) {
+    counterText = `<div class="message-counter">#${message.counter}</div>`;
+  }
+  
   messageEl.innerHTML = `
     ${message.text}
+    ${counterText}
     <div class="message-time">${time}</div>
   `;
   
@@ -284,28 +342,61 @@ function addMessageToUI(message) {
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-function updateKeyStatus(secured) {
+function updateKeyStatus(secured, fingerprint = null) {
   const statusDiv = document.getElementById('keyStatus');
   statusDiv.className = `key-status ${secured ? 'secured' : 'unsecured'}`;
-  statusDiv.innerHTML = `
-    <span class="status-dot ${secured ? 'green' : 'red'}"></span>
-    <span>${secured ? '🔒 Bảo mật' : '🔓 Chưa bảo mật'}</span>
-  `;
+  
+  if (secured && fingerprint) {
+    statusDiv.innerHTML = `
+      <span class="status-dot green"></span>
+      <span> Bảo mật | Key: ${fingerprint}</span>
+    `;
+  } else if (secured) {
+    statusDiv.innerHTML = `
+      <span class="status-dot green"></span>
+      <span> Bảo mật</span>
+    `;
+  } else {
+    statusDiv.innerHTML = `
+      <span class="status-dot red"></span>
+      <span> Chưa bảo mật</span>
+    `;
+  }
 }
 
 // ========== CRYPTO FUNCTIONS ==========
+
+/**
+ * Tính fingerprint (hash) của public key để verify
+ */
+async function getPublicKeyFingerprint(publicKeyJwk) {
+  try {
+    const keyString = JSON.stringify(publicKeyJwk);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(keyString);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex.substring(0, 16).toUpperCase();  // Shortened to 16 chars
+  } catch (e) {
+    return 'ERROR';
+  }
+}
 
 /**
  * Khởi tạo cặp khóa ECDH cho client
  */
 async function initializeCrypto() {
   try {
+    console.log('🔐 Bắt đầu khởi tạo crypto...');
     const keyPair = await generateECDH();
     clientState.privateKey = keyPair.privateKey;
     clientState.publicKey = keyPair.publicKey;
-    console.log('✅ Crypto initialized');
+    console.log('✅ Crypto initialized thành công');
+    return true;
   } catch (e) {
-    console.error('❌ Crypto init error:', e);
+    console.error('❌ Crypto init error:', e.message, e);
+    throw new Error('Không thể khởi tạo crypto: ' + e.message);
   }
 }
 
@@ -342,25 +433,42 @@ async function generateECDH() {
  */
 async function initiateKeyExchange(targetUserId) {
   const keyPair = await generateECDH();
+  
+  // Lưu key pair cho key exchange này
+  clientState.pendingKeyExchanges[targetUserId] = {
+    privateKey: keyPair.privateKey,
+    publicKey: keyPair.publicKey
+  };
+  
   socket.emit('initiateKeyExchange', {
     targetUserId,
     publicKey: keyPair.publicKey
   });
   
-  // Lưu private key tạm thời
-  clientState.privateKey = keyPair.privateKey;
+  console.log('🔐 Key exchange initiated with:', targetUserId);
 }
 
 /**
  * Setup session sau khi trao đổi khóa thành công
  */
-async function setupSession(sessionId, peerId, peerPublicKey, myPrivateKey) {
+async function setupSession(sessionId, peerId, peerPublicKeyJwk, myPrivateKey, serverFingerprint = null) {
   try {
-    // Tính shared secret từ ECDH
-    const sharedSecret = await computeECDHSecret(myPrivateKey, peerPublicKey);
+    console.log('🔧 Setting up session:', { sessionId, peerId });
     
-    // Derive session keys từ shared secret
-    const keys = await deriveSessionKeys(sharedSecret, sessionId);
+    // Tính shared secret từ ECDH
+    const sharedSecret = await computeECDHSecret(myPrivateKey, peerPublicKeyJwk);
+    console.log('✅ Shared secret computed');
+    
+    // Dùng fingerprint từ server (đã đồng bộ), hoặc tính lại nếu không có
+    let peerFingerprint = serverFingerprint;
+    if (!peerFingerprint) {
+      peerFingerprint = await getPublicKeyFingerprint(peerPublicKeyJwk);
+    }
+    console.log('👤 Peer key fingerprint:', peerFingerprint);
+    
+    // Derive session keys từ shared secret (với userId để xác định send/recv)
+    const keys = await deriveSessionKeys(sharedSecret, sessionId, clientState.userId, peerId);
+    console.log('✅ Session keys derived:', { encKey: keys.encKey.length, decKey: keys.decKey.length });
     
     // Lưu session
     clientState.sessions[sessionId] = {
@@ -368,14 +476,37 @@ async function setupSession(sessionId, peerId, peerPublicKey, myPrivateKey) {
       encKey: keys.encKey,
       decKey: keys.decKey,
       counter: 0,
-      lastCounter: -1
+      lastCounter: -1,
+      peerFingerprint
     };
     
-    console.log('✅ Session setup:', sessionId);
-    updateKeyStatus(true);
+    console.log('✅ Session setup success:', sessionId);
+    
+    // Chỉ update UI nếu đã có fingerprint từ server
+    if (serverFingerprint) {
+      updateKeyStatus(true, peerFingerprint);
+      
+      // Hiển thị thông báo verify
+      addMessageToUI({
+        text: `Bảo mật thành công\n🔑 Fingerprint: ${peerFingerprint}\n\n Hãy xác nhận fingerprint này với đối phương qua ngoài app để bảo mật cuộc trò chuyện!`,
+        sender: 'system',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // Fingerprint sẽ được update khi nhận từ server
+      updateKeyStatus(false);
+    }
+    
+    return true;
     
   } catch (e) {
-    console.error('❌ Setup session error:', e);
+    console.error('❌ Setup session error:', e.message, e.stack);
+    addMessageToUI({
+      text: 'Lỗi: Không thể setup phiên bảo mật: ' + e.message,
+      sender: 'system',
+      timestamp: new Date().toISOString()
+    });
+    return false;
   }
 }
 
@@ -424,7 +555,7 @@ async function computeECDHSecret(myPrivateKeyJwk, peerPublicKeyJwk) {
  * Derive session keys từ shared secret
  * (Web Crypto API HKDF đơn giản)
  */
-async function deriveSessionKeys(sharedSecretB64, salt) {
+async function deriveSessionKeys(sharedSecretB64, salt, clientUserId, peerUserId) {
   try {
     const sharedSecret = Uint8Array.from(atob(sharedSecretB64), c => c.charCodeAt(0));
     
@@ -444,7 +575,7 @@ async function deriveSessionKeys(sharedSecretB64, salt) {
       sharedSecret
     );
 
-    // Expand
+    // Expand - tạo 2 keys tách rời (mỗi key 32 bytes = 256 bits)
     const hmacKey2 = await window.crypto.subtle.importKey(
       "raw",
       prk,
@@ -453,16 +584,35 @@ async function deriveSessionKeys(sharedSecretB64, salt) {
       ["sign"]
     );
 
-    const okm = await window.crypto.subtle.sign(
+    // Key 1 và Key 2 (thứ tự không quan trọng)
+    const key1Bytes = await window.crypto.subtle.sign(
       "HMAC",
       hmacKey2,
-      new TextEncoder().encode("E2EE_CHAT_SESSION")
+      new TextEncoder().encode("E2EE_CHAT_KEY_1")
     );
 
-    // Split thành encKey + decKey
-    const okmArray = new Uint8Array(okm);
-    const encKey = btoa(String.fromCharCode(...okmArray.slice(0, 32)));
-    const decKey = btoa(String.fromCharCode(...okmArray.slice(32, 64)));
+    const key2Bytes = await window.crypto.subtle.sign(
+      "HMAC",
+      hmacKey2,
+      new TextEncoder().encode("E2EE_CHAT_KEY_2")
+    );
+
+    const key1 = btoa(String.fromCharCode(...new Uint8Array(key1Bytes)));
+    const key2 = btoa(String.fromCharCode(...new Uint8Array(key2Bytes)));
+
+    // Xác định encKey và decKey dựa trên userId
+    // Nếu clientUserId < peerUserId: client là "lower", dùng key1 để encrypt
+    // Ngược lại: client là "higher", dùng key2 để encrypt
+    let encKey, decKey;
+    if (clientUserId < peerUserId) {
+      encKey = key1; // Client encrypt với key1
+      decKey = key2; // Client decrypt với key2
+    } else {
+      encKey = key2; // Client encrypt với key2
+      decKey = key1; // Client decrypt với key1
+    }
+
+    console.log(`✅ Keys derived - ${clientUserId < peerUserId ? 'LOWER' : 'HIGHER'} (encKey, decKey)`);
 
     return { encKey, decKey };
     
@@ -490,17 +640,25 @@ async function encryptMessage(keyB64, plaintext, aad) {
     // Tạo nonce (12 bytes)
     const nonce = window.crypto.getRandomValues(new Uint8Array(12));
 
-    // Mã hóa
-    const ciphertext = await window.crypto.subtle.encrypt(
+    console.log('🔒 Encrypting:', {
+      plaintext,
+      keyLength: keyArray.length,
+      nonceLength: nonce.length,
+      aad
+    });
+
+    // Mã hóa - GCM output bao gồm ciphertext + tag (16 bytes)
+    const ciphertextWithTag = await window.crypto.subtle.encrypt(
       { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode(aad) },
       key,
       new TextEncoder().encode(plaintext)
     );
 
+    console.log('✅ Encrypt success, ciphertextLength:', ciphertextWithTag.byteLength);
+
     return {
-      ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertext))),
-      nonce: btoa(String.fromCharCode(...nonce)),
-      tag: btoa(String.fromCharCode(...new Uint8Array(ciphertext).slice(-16))) // GCM tag 
+      ciphertext: btoa(String.fromCharCode(...new Uint8Array(ciphertextWithTag))),
+      nonce: btoa(String.fromCharCode(...nonce))
     };
     
   } catch (e) {
@@ -512,7 +670,7 @@ async function encryptMessage(keyB64, plaintext, aad) {
 /**
  * Giải mã tin nhắn AES-256-GCM
  */
-async function decryptMessage(keyB64, ciphertextB64, nonceB64, tagB64, aad) {
+async function decryptMessage(keyB64, ciphertextB64, nonceB64, aad) {
   try {
     // Import key
     const keyArray = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
@@ -524,35 +682,31 @@ async function decryptMessage(keyB64, ciphertextB64, nonceB64, tagB64, aad) {
       ["decrypt"]
     );
 
-    // Reconstruct ciphertext với tag
-    const cipherArray = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0));
-    const tagArray = Uint8Array.from(atob(tagB64), c => c.charCodeAt(0));
+    // Reconstruct từ ciphertext + tag (ghép nối trong base64)
+    const ciphertextWithTag = Uint8Array.from(atob(ciphertextB64), c => c.charCodeAt(0));
     const nonce = Uint8Array.from(atob(nonceB64), c => c.charCodeAt(0));
 
-    const fullCiphertext = new Uint8Array([...cipherArray, ...tagArray]);
+    console.log('🔓 Decrypting:', { 
+      keyLength: keyArray.length, 
+      ciphertextLength: ciphertextWithTag.length,
+      nonceLength: nonce.length,
+      aad 
+    });
 
     // Giải mã
     const plaintext = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode(aad) },
       key,
-      fullCiphertext
+      ciphertextWithTag
     );
 
+    console.log('✅ Decrypt success');
     return new TextDecoder().decode(plaintext);
     
   } catch (e) {
-    console.error('❌ Decrypt error:', e);
+    console.error('❌ Decrypt error - details:', e.name, e.message);
     throw new Error('Giải mã thất bại: ' + e.message);
   }
 }
-
-// ========== INIT ==========
-document.getElementById('passwordInput').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') handleLogin();
-});
-
-document.getElementById('messageInput').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') handleSendMessage();
-});
 
 console.log('🚀 E2EE Chat Client loaded');

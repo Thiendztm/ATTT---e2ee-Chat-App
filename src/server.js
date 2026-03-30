@@ -14,17 +14,54 @@ const io = socketIo(server, {
 const users = new Map(); // userId -> {username, socketId}
 const sessions = new Map(); // sessionId -> {userA, userB, status}
 
-app.use(express.static(path.join(__dirname, 'static')));
+app.use(express.static(path.join(__dirname, '..', 'static')));
 app.use(express.json());
 
 // ========== ROUTE ==========
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'static', 'index.html'));
+  res.sendFile(path.join(__dirname, '..', 'static', 'index.html'));
+});
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'static', 'login.html'));
 });
 
 // ========== SOCKET EVENTS ==========
 io.on('connection', (socket) => {
   console.log('🔗 User connected:', socket.id);
+
+  // 0. AUTHENTICATE (khi user refresh page)
+  socket.on('authenticate', (data) => {
+    const { userId, username } = data;
+    
+    const user = users.get(userId);
+    if (!user || user.username !== username) {
+      socket.emit('error', 'Xác thực thất bại. Vui lòng đăng nhập lại.');
+      return;
+    }
+
+    // Set socket.userId cho connection mới
+    socket.userId = userId;
+    user.socketId = socket.id; // Update socketId mới
+
+    socket.emit('authenticateSuccess', { userId, username });
+    console.log(`✅ Authenticate: ${username} (new socket)`);
+    
+    // Emit userList ngay
+    const userList = Array.from(users.entries())
+      .filter(([id]) => id !== socket.userId)
+      .map(([id, u]) => ({
+        userId: id,
+        username: u.username,
+        online: u.socketId ? true : false
+      }));
+    
+    socket.emit('userList', userList);
+    console.log(`📤 Sent userList to ${username}:`, userList.length, 'users');
+    
+    // Broadcast userList updates tới các user khác
+    broadcastUserListToOthers(userId);
+  });
 
   // 1. REGISTER / LOGIN
   socket.on('register', (data) => {
@@ -79,8 +116,20 @@ io.on('connection', (socket) => {
     socket.emit('loginSuccess', { userId: socket.userId, username: user.username });
     console.log(`✅ Login: ${username}`);
     
-    // Gửi danh sách user online
-    broadcastUserList();
+    // Gửi danh sách user online cho user vừa login
+    const userList = Array.from(users.entries())
+      .filter(([id]) => id !== socket.userId) // Loại bỏ user hiện tại
+      .map(([id, u]) => ({
+        userId: id,
+        username: u.username,
+        online: u.socketId ? true : false
+      }));
+    
+    socket.emit('userList', userList);
+    console.log(`📤 Sent userList to ${username}:`, userList);
+    
+    // Broadcast để tất cả user khác biết user mới vừa online
+    broadcastUserListToOthers(socket.userId);
   });
 
   // 2. DANH SACH USER ONLINE
@@ -162,20 +211,39 @@ io.on('connection', (socket) => {
     session.publicKeyB = publicKey;
     session.status = 'established';
 
-    // Gửi thông báo tới A rằng B đã chấp nhận
+    // Tính fingerprint chung (hash của 2 public key sorted)
+    const keyA = JSON.stringify(session.publicKeyA);
+    const keyB = JSON.stringify(publicKey);
+    const sortedKeys = [keyA, keyB].sort().join('|');
+    
+    const sharedFingerprint = require('crypto')
+      .createHash('sha256')
+      .update(sortedKeys)
+      .digest('hex')
+      .substring(0, 16)
+      .toUpperCase();
+
+    // Gửi thông báo tới A rằng B đã chấp nhận (kèm fingerprint chung)
     const userA = users.get(session.userA);
     io.to(userA.socketId).emit('keyExchangeAccepted', {
       sessionId,
       fromUserId: session.userB,
-      publicKey: publicKey
+      publicKey: publicKey,
+      fingerprint: sharedFingerprint
     });
 
-    console.log(`✅ Key exchange accepted: ${userB.username}`);
+    // Gửi confirmation tới B (cùng fingerprint)
+    socket.emit('sessionEstablished', {
+      sessionId,
+      fingerprint: sharedFingerprint
+    });
+
+    console.log(`✅ Key exchange accepted: ${userB.username}, fingerprint: ${sharedFingerprint}`);
   });
 
   // 5. SEND ENCRYPTED MESSAGE
   socket.on('sendMessage', (data) => {
-    const { sessionId, recipientId, ciphertext, nonce, tag, counter } = data;
+    const { sessionId, recipientId, ciphertext, nonce, counter } = data;
     
     if (!socket.userId) {
       socket.emit('error', 'Chưa đăng nhập');
@@ -200,7 +268,6 @@ io.on('connection', (socket) => {
       senderId: socket.userId,
       ciphertext,
       nonce,
-      tag,
       counter,
       timestamp: new Date().toISOString()
     });
@@ -221,6 +288,7 @@ io.on('connection', (socket) => {
 
 // ========== HELPER FUNCTIONS ==========
 function broadcastUserList() {
+  // Broadcast cho tất cả client về toàn bộ user list
   const userList = Array.from(users.entries()).map(([id, user]) => ({
     userId: id,
     username: user.username,
@@ -228,6 +296,26 @@ function broadcastUserList() {
   }));
 
   io.emit('userListUpdate', userList);
+  console.log(`📢 Broadcast userListUpdate to all:`, userList.length, 'users');
+}
+
+function broadcastUserListToOthers(exceptUserId) {
+  // Broadcast cho tất cả user khác (ngoại trừ user được truyền vào)
+  // Dùng khi user mới vừa login
+  Array.from(users.entries()).forEach(([id, user]) => {
+    if (id !== exceptUserId && user.socketId) {
+      // Tạo danh sách user (loại bỏ user nhận)
+      const userList = Array.from(users.entries())
+        .filter(([otherId]) => otherId !== id) // Loại user nhận khỏi danh sách
+        .map(([otherId, otherUser]) => ({
+          userId: otherId,
+          username: otherUser.username,
+          online: otherUser.socketId ? true : false
+        }));
+      
+      io.to(user.socketId).emit('userListUpdate', userList);
+    }
+  });
 }
 
 // ========== START SERVER ==========
