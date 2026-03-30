@@ -1,7 +1,7 @@
 {
-  "name": "e2ee-chat-app",
+  "name": "MOXI CHAT",
   "version": "1.0.0",
-  "description": "End-to-End Encrypted Chat Application using Diffie-Hellman and AES",
+  "description": "",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
