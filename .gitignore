@@ -4,3 +4,5 @@ package-lock.json
 .vscode/
 *.log
 .DS_Store
+DEMO_MITM_ATTACK.md/
+phan-tich-e2ee-chat.txt/
