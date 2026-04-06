@@ -11,7 +11,7 @@ function handleRegister() {
   const username = document.getElementById('usernameInput').value.trim();
   const password = document.getElementById('passwordInput').value.trim();
   
-  console.log('📝 Register attempt:', username);
+  console.log('[Register] Attempt:', username);
   
   if (!username || !password) {
     showError('Vui lòng nhập username và password');
@@ -28,7 +28,7 @@ function handleRegister() {
     return;
   }
 
-  console.log('ℹ️ Gửi register request tới server:', username);
+  console.log('[Register] Send request to server:', username);
   socket.emit('register', { username, password });
 }
 
@@ -36,14 +36,14 @@ function handleLogin() {
   const username = document.getElementById('usernameInput').value.trim();
   const password = document.getElementById('passwordInput').value.trim();
   
-  console.log('🔓 Login attempt:', username);
+  console.log('[Login] Attempt:', username);
   
   if (!username || !password) {
     showError('Vui lòng nhập username và password');
     return;
   }
 
-  console.log('ℹ️ Gửi login request tới server:', username);
+  console.log('[Login] Send request to server:', username);
   socket.emit('login', { username, password });
 }
 
@@ -72,12 +72,12 @@ function showSuccess(message) {
 // ========== SOCKET EVENTS ==========
 
 socket.on('connect', () => {
-  console.log('✅ Kết nối tới server:', socket.id);
+  console.log('[Connected] Socket:', socket.id);
 });
 
 socket.on('registerSuccess', (data) => {
-  console.log('✅ Register successful:', data);
-  showSuccess('✅ Đăng ký thành công! Vui lòng đăng nhập.');
+  console.log('[OK] Register:', data);
+  showSuccess('Register OK! Please login.');
   
   // Clear fields
   document.getElementById('usernameInput').value = '';
@@ -85,8 +85,8 @@ socket.on('registerSuccess', (data) => {
 });
 
 socket.on('loginSuccess', (data) => {
-  console.log('✅ Login successful:', data);
-  showSuccess('✅ Đăng nhập thành công! Chuyển hướng...');
+  console.log('[OK] Login:', data);
+  showSuccess('Login OK! Redirecting...');
   
   // Lưu user info vào sessionStorage (per tab, không global)
   sessionStorage.setItem('userId', data.userId);
@@ -99,12 +99,12 @@ socket.on('loginSuccess', (data) => {
 });
 
 socket.on('error', (message) => {
-  console.error('❌ Server error:', message);
+  console.error('[ERROR] Server:', message);
   showError(message);
 });
 
 socket.on('disconnect', () => {
-  console.warn('⚠️ Mất kết nối tới server');
+  console.warn('[WARN] Disconnected');
 });
 
 // ========== INIT ==========
@@ -125,4 +125,4 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-console.log('🚀 E2EE Chat Auth page loaded');
+console.log('[Auth] Page loaded');

@@ -177,7 +177,7 @@ class E2EECrypto {
       decrypted = decipher.update(ciphertext, 'hex', 'utf-8');
       decrypted += decipher.final('utf-8');
     } catch (e) {
-      throw new Error('❌ Integrity check failed! Tin nhắn bị sửa đổi hoặc khóa sai.');
+      throw new Error('[ERROR] Integrity check failed! Message modified or wrong key.');
     }
 
     return decrypted;

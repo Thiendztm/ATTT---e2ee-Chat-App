@@ -28,7 +28,7 @@ app.get('/login', (req, res) => {
 
 // ========== SOCKET EVENTS ==========
 io.on('connection', (socket) => {
-  console.log('🔗 User connected:', socket.id);
+  console.log('[Client] Connected:', socket.id);
 
   // 0. AUTHENTICATE (khi user refresh page)
   socket.on('authenticate', (data) => {
@@ -45,7 +45,7 @@ io.on('connection', (socket) => {
     user.socketId = socket.id; // Update socketId mới
 
     socket.emit('authenticateSuccess', { userId, username });
-    console.log(`✅ Authenticate: ${username} (new socket)`);
+    console.log(`Authenticate: ${username} (new socket)`);
     
     // Emit userList ngay
     const userList = Array.from(users.entries())
@@ -56,9 +56,7 @@ io.on('connection', (socket) => {
         online: u.socketId ? true : false
       }));
     
-    socket.emit('userList', userList);
-    console.log(`📤 Sent userList to ${username}:`, userList.length, 'users');
-    
+    socket.emit('userList', userList);    
     // Broadcast userList updates tới các user khác
     broadcastUserListToOthers(userId);
   });
@@ -92,7 +90,7 @@ io.on('connection', (socket) => {
 
     socket.userId = userId;
     socket.emit('registerSuccess', { userId, username });
-    console.log(`✅ Register: ${username} (${userId})`);
+    console.log(` Register: ${username} (${userId})`);
   });
 
   socket.on('login', (data) => {
@@ -114,7 +112,7 @@ io.on('connection', (socket) => {
     user.socketId = socket.id; // update socket
 
     socket.emit('loginSuccess', { userId: socket.userId, username: user.username });
-    console.log(`✅ Login: ${username}`);
+    console.log(` Login: ${username}`);
     
     // Gửi danh sách user online cho user vừa login
     const userList = Array.from(users.entries())
@@ -126,7 +124,6 @@ io.on('connection', (socket) => {
       }));
     
     socket.emit('userList', userList);
-    console.log(`📤 Sent userList to ${username}:`, userList);
     
     // Broadcast để tất cả user khác biết user mới vừa online
     broadcastUserListToOthers(socket.userId);
@@ -187,7 +184,11 @@ io.on('connection', (socket) => {
       sessionId
     });
 
-    console.log(`🔐 Key exchange request: ${currentUser.username} -> ${targetUser.username}`);
+    // [EAVESDROPPER LOG]
+    console.log('\n[ATTACKER SEES KEY EXCHANGE]:');
+    console.log('  User A Public Key:', publicKey.substring(0, 30) + '...');
+    console.log('  (Sent to User B via server)\n');
+
   });
 
   // 4. ACCEPT KEY EXCHANGE (B chấp nhận trao đổi khóa)
@@ -223,6 +224,14 @@ io.on('connection', (socket) => {
       .substring(0, 16)
       .toUpperCase();
 
+    // [EAVESDROPPER LOG]
+    console.log('[ATTACKER SEES]:');
+    console.log('  User A Public Key:', session.publicKeyA.substring(0, 30) + '...');
+    console.log('  User B Public Key:', publicKey.substring(0, 30) + '...');
+    console.log('  Both public keys exchanged via server');
+    console.log('  But attacker CAN\'T compute Shared Secret K!');
+    console.log('  Reason: Private keys (a, b) are NOT sent\n');
+
     // Gửi thông báo tới A rằng B đã chấp nhận (kèm fingerprint chung)
     const userA = users.get(session.userA);
     io.to(userA.socketId).emit('keyExchangeAccepted', {
@@ -238,7 +247,6 @@ io.on('connection', (socket) => {
       fingerprint: sharedFingerprint
     });
 
-    console.log(`✅ Key exchange accepted: ${userB.username}, fingerprint: ${sharedFingerprint}`);
   });
 
   // 5. SEND ENCRYPTED MESSAGE
@@ -272,15 +280,29 @@ io.on('connection', (socket) => {
       timestamp: new Date().toISOString()
     });
 
-    console.log(`💬 Message relayed: ${socket.id} -> ${recipient.socketId}`);
+    // [EAVESDROPPER LOG] - What attacker/server can see
+    console.log('\n[SERVER/ATTACKER INTERCEPTS]:');
+    console.log('  From:', socket.userId);
+    console.log('  To:', recipientId);
+    console.log('  Ciphertext:', ciphertext.substring(0, 20) + '...');
+    console.log('  Nonce:', nonce.substring(0, 20) + '...');
+    console.log('  --> Attacker sees ciphertext, but cannot decrypt!');
+    console.log('  --> Attacker needs Shared Secret K to decrypt\n');
+
   });
 
   // 6. DISCONNECT
   socket.on('disconnect', () => {
     if (socket.userId) {
       const user = users.get(socket.userId);
-      console.log(`❌ Disconnect: ${user?.username || socket.userId}`);
-      // Trong MVP không xóa user ngay, để có thể reconnect
+      console.log(`[Disconnect] ${user?.username || socket.userId}`);
+      
+      // Clear socketId so user shows as offline
+      if (user) {
+        user.socketId = null;
+      }
+      
+      // Broadcast updated user list to others
       broadcastUserList();
     }
   });
@@ -296,7 +318,6 @@ function broadcastUserList() {
   }));
 
   io.emit('userListUpdate', userList);
-  console.log(`📢 Broadcast userListUpdate to all:`, userList.length, 'users');
 }
 
 function broadcastUserListToOthers(exceptUserId) {
@@ -321,5 +342,5 @@ function broadcastUserListToOthers(exceptUserId) {
 // ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server chạy tại http://localhost:${PORT}`);
+  console.log(`Server chạy tại http://localhost:${PORT}`);
 });
