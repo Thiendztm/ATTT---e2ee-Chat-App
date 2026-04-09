@@ -3,13 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E2EE Chat - Mã hóa đầu cuối</title>
+    <title>App Chat</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
-    <!-- CHAT SCREEN (chỉ có chat, không có auth) -->
+<body> 
     <div id="chatScreen">
-        <!-- SIDEBAR -->
         <div class="sidebar">
             <div class="sidebar-header">Người dùng</div>
             <div class="user-info" id="userInfo"></div>
@@ -19,10 +17,9 @@
             <button class="logout-btn" onclick="handleLogout()">Logout</button>
         </div>
 
-        <!-- MAIN CHAT AREA -->
         <div class="main-content">
             <div class="chat-header">
-                <h2 id="chatTitle">Bắt đầu cuộc trò chuyện mã hóa</h2>
+                <h2 id="chatTitle">Bắt đầu cuộc trò chuyện</h2>
                 <div class="key-status unsecured" id="keyStatus">
                     <span class="status-dot red"></span>
                     <span>Chưa bảo mật</span>

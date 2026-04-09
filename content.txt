@@ -1,0 +1,130 @@
+﻿BAO CAO CHUYEN DE: MA HOA DOI XUNG AES
+
+MUC LUC
+1. Mo dau
+2. Tong quan ve AES
+3. Su ra doi va qua trinh tieu chuan hoa AES
+4. Mo ta thuat toan AES
+5. Do an toan cua AES
+6. Uu, nhuoc diem va pham vi su dung cua ma hoa doi xung
+7. Lien he voi bai toan ung dung chat an toan
+8. Ket luan
+9. Tai lieu tham khao
+
+1. Mo dau
+Trong linh vuc an toan thong tin, ma hoa doi xung dong vai tro cot loi trong viec bao ve du lieu ve tinh bi mat va hieu nang xu ly. Trong cac thuat toan ma hoa doi xung, AES (Advanced Encryption Standard) duoc xem la tieu chuan hien dai, duoc su dung rong rai trong he thong phan mem, phan cung, giao tiep mang va bao mat du lieu luu tru.
+
+Bao cao nay tap trung trinh bay phan AES bao gom: boi canh ra doi, nguyen ly hoat dong, danh gia do an toan, uu nhuoc diem va kha nang ap dung trong bai toan thuc te. Noi dung duoc tong hop dua tren tai lieu cua giang vien va he thong hoa lai theo cau truc bao cao hoc thuat.
+
+2. Tong quan ve AES
+AES la thuat toan ma hoa khoi doi xung. Dac diem doi xung co nghia la qua trinh ma hoa va giai ma su dung cung mot khoa bi mat.
+
+Thong so chinh:
+- Kich thuoc khoi co dinh: 128 bit.
+- Do dai khoa ho tro: 128 bit, 192 bit, 256 bit.
+- So vong xu ly tuong ung: 10, 12, 14.
+
+Muc tieu cua AES:
+- Thay the DES do nhung han che ve do an toan va hieu nang.
+- Dam bao kha nang trien khai nhanh bang phan mem va phan cung.
+- Cung cap muc bao mat cao, phu hop tieu chuan chinh phu va thuong mai.
+
+3. Su ra doi va qua trinh tieu chuan hoa AES
+Tu cuoi thap nien 1980 den dau 1990, cong dong nghien cuu bat dau tim thuat toan thay the DES do lo ngai ve do an toan va toc do khi trien khai bang phan mem. Nhieu de xuat duoc dua ra nhu RC5, Blowfish, IDEA, NewDES, SAFER, FEAL.
+
+Nam 2001, sau cuoc thi quoc te do NIST to chuc trong 5 nam, thuat toan Rijndael duoc lua chon va chinh thuc tro thanh AES. Thuat toan duoc thiet ke boi hai nha mat ma hoc nguoi Bi la Joan Daemen va Vincent Rijmen.
+
+Trong vong chung ket co cac ung vien manh gom RC6, Serpent, MARS, Twofish va Rijndael. Tuy nhien, Rijndael duoc danh gia cao nhat ve can bang giua bao mat, hieu nang, de trien khai va tinh linh hoat.
+
+Y nghia cua viec chuan hoa:
+- Tao ra mot tieu chuan ma hoa hien dai thay cho DES.
+- Co tinh quoc te, duoc cong dong nghien cuu kiem chung rong rai.
+- Dat nen tang cho cac he thong bao mat hien nay.
+
+4. Mo ta thuat toan AES
+4.1. Phan biet AES va Rijndael
+Hai ten AES va Rijndael thuong duoc dung thay the nhau, nhung khong hoan toan dong nhat.
+- Rijndael cho phep do dai khoi va do dai khoa la boi so cua 32 bit trong khoang 128 den 256 bit.
+- AES chi co dinh khoi 128 bit, khoa 128/192/256 bit.
+
+4.2. Bieu dien du lieu
+Du lieu duoc bieu dien duoi dang ma tran 4x4 byte, goi la state. Moi vong xu ly tac dong len state de tao ra muc khuech tan va nhieu loai bien doi khac nhau.
+
+4.3. Cac buoc trong mot vong AES
+Trong qua trinh ma hoa, AES su dung 4 phep bien doi chinh:
+1. AddRoundKey
+- Ket hop state voi khoa con bang phep XOR.
+- Khoa con duoc sinh tu khoa goc qua qua trinh mo rong khoa.
+
+2. SubBytes
+- Thay the tung byte thong qua bang tra S-box.
+- Day la buoc phi tuyen quan trong de tang kha nang chong tham ma.
+
+3. ShiftRows
+- Dich vong cac hang trong ma tran state voi so buoc khac nhau.
+- Muc dich la tao su xao tron vi tri byte theo chieu ngang.
+
+4. MixColumns
+- Bien doi tuyen tinh theo cot de tang khuech tan.
+- O vong cuoi cung, MixColumns khong duoc ap dung.
+
+4.4. Cau truc tong quat
+- Khoi tao voi AddRoundKey ban dau.
+- Lap cac vong xu ly day du (SubBytes, ShiftRows, MixColumns, AddRoundKey).
+- Vong cuoi: SubBytes, ShiftRows, AddRoundKey.
+
+5. Do an toan cua AES
+AES duoc xem la an toan cao trong thuc te su dung hien nay khi trien khai dung cach.
+
+5.1. Danh gia tong quan
+- Khoa 128/192/256 bit duoc xem la du manh cho cac muc bao mat tu thuong mai den cap cao.
+- Theo cong bo cua Chinh phu Hoa Ky (nam 2003), AES duoc cho phep bao ve thong tin mat; thong tin tuyet mat su dung khoa 192 hoac 256 bit va can quy trinh chung nhan phu hop.
+
+5.2. Huong tan cong va gioi han
+- Trong thoi diem duoc tai lieu de cap, tan cong thuc te chu yeu nham vao kenh ben (side-channel), khong phai pha truc tiep toan bo thuat toan.
+- Nhieu nghien cuu thuong tap trung vao phien ban rut gon so vong cua AES, thay vi ban day du.
+- Mot so huong ly thuyet (vi du XSL) tung duoc de xuat, nhung chua tao thanh tan cong pha vo AES day du trong thuc te.
+
+5.3. Nhan xet thuc tien
+Do an toan cua AES khong chi phu thuoc vao thuat toan ma con phu thuoc vao cach trien khai:
+- Quan ly khoa.
+- Sinh so ngau nhien.
+- Chon mode hoat dong phu hop.
+- Chong ro ri thong tin qua kenh ben.
+
+6. Uu, nhuoc diem va pham vi su dung cua ma hoa doi xung
+6.1. Uu diem
+- Toc do ma hoa/giai ma nhanh.
+- Hieu nang cao, phu hop xu ly khoi luong lon du lieu.
+- De tich hop trong nhieu he thong va ung dung.
+- Voi cac thuat toan hien dai nhu AES, muc do bao mat rat cao neu cau hinh dung.
+
+6.2. Nhuoc diem
+Nhuoc diem lon nhat cua ma hoa doi xung la phan phoi khoa bi mat.
+Neu khoa bi lo trong qua trinh trao doi, toan bo du lieu ma hoa sau do co nguy co bi giai ma.
+
+6.3. Pham vi su dung phu hop
+- Rat phu hop cho ma hoa du lieu luu tru ca nhan/to chuc (single user).
+- Phu hop cho he thong da co kenh trao doi khoa an toan.
+- Trong moi truong nhieu doi tac (multiple users), can ket hop co che trao doi khoa tin cay de tranh rui ro lo khoa.
+
+7. Lien he voi bai toan ung dung chat an toan
+Trong bai toan chat an toan, AES dong vai tro thuat toan ma hoa noi dung tin nhan nhieu hieu nang.
+
+Tom tat vai tro cua AES trong he thong:
+- Ma hoa plaintext thanh ciphertext truoc khi gui.
+- Giai ma ciphertext ve plaintext o dau nhan.
+- Bao ve noi dung tin nhan khoi viec doc trom tren duong truyen.
+
+Luu y quan trong:
+- Ma hoa doi xung manh o khau ma hoa du lieu, nhung han che o khau trao doi khoa.
+- Vi vay, trong he thong thuc te thuong can mot co che bo tro de tao/chia se khoa phien an toan.
+
+8. Ket luan
+AES la tieu chuan ma hoa doi xung hien dai, duoc chuan hoa boi NIST va duoc ung dung rong rai trong thuc te. Thuat toan nay dat su can bang tot giua do an toan, toc do va kha nang trien khai.
+
+Tu goc do ung dung, AES rat phu hop de ma hoa du lieu va luong giao tiep co khoi luong lon. Tuy nhien, de xay dung he thong bao mat hoan chinh, van de phan phoi khoa can duoc giai quyet bang cac co che bo sung phu hop.
+
+9. Tai lieu tham khao
+- Tai lieu bai giang cua giang vien: noi dung ve lich su, cau truc va danh gia AES.
+- NIST, FIPS-197: Advanced Encryption Standard (AES).
